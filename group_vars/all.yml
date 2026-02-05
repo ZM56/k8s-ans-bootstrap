@@ -1,0 +1,18 @@
+---
+admin_user: admin
+
+# Какой netplan-файл правим
+netplan_file: /etc/netplan/00-installer-config.yaml
+
+# Сетевой нтерфейс
+netplan_iface: ens33
+
+# Общие DNS
+netplan_dns:
+  - 8.8.8.8
+
+# Шлюз по умолчанию (поставь свой)
+netplan_gateway: 192.168.1.1
+
+# Префикс сети
+netplan_prefix: 24
