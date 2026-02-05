@@ -1,0 +1,70 @@
+---
+- name: Bootstrap future Kubernetes hosts (swap, netplan static, sudoers)
+  hosts: k8s
+  become: true
+  gather_facts: true
+
+  handlers:
+    - name: Apply netplan
+      ansible.builtin.command: netplan apply -f
+
+  tasks:
+    - name: Ensure sudo is installed
+      ansible.builtin.package:
+        name: sudo
+        state: present
+
+    # --- SWAP: отключить сейчас
+    - name: Disable swap immediately (swapoff -a)
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+      failed_when: false
+
+    # --- SWAP: убрать из fstab
+    - name: Remove swap entries from /etc/fstab (idempotent)
+      ansible.builtin.lineinfile:
+        path: /etc/fstab
+        regexp: '^\s*[^#].*\s+swap\s+'
+        state: absent
+
+    # --- SUDOERS: admin NOPASSWD
+    - name: Create sudoers drop-in for admin (NOPASSWD)
+      ansible.builtin.copy:
+        dest: "/etc/sudoers.d/{{ admin_user }}"
+        content: "{{ admin_user }} ALL=(ALL) NOPASSWD: ALL\n"
+        owner: root
+        group: root
+        mode: "0440"
+        validate: "/usr/sbin/visudo -cf %s"
+
+    # --- NETPLAN: прописать статическую конфигурацию
+    - name: Render netplan config
+      ansible.builtin.copy:
+        dest: "{{ netplan_file }}"
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          network:
+            version: 2
+            ethernets:
+              {{ netplan_iface }}:
+                dhcp4: false
+                addresses:
+                  - {{ netplan_address }}/{{ netplan_prefix }}
+                routes:
+                  - to: default
+                    via: {{ netplan_gateway }}
+                nameservers:
+                  addresses:
+          {% for dns in netplan_dns %}
+                    - {{ dns }}
+          {% endfor %}
+      notify: Apply netplan
+
+    # Проверяем, что адреса заданы
+    - name: Assert netplan_address is set for each host
+      ansible.builtin.assert:
+        that:
+          - netplan_address is defined
+        fail_msg: "netplan_address is not defined for this host. Add host_vars/<hostname>.yml"
